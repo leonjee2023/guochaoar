@@ -1,266 +1,66 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>国潮涂鸦</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>摄像头体检</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #111; font-family: sans-serif; }
-        
-        /* 视频背景 */
-        #cam-video {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: -1; transform: scaleX(-1);
-        }
-
-        /* 调试面板 (屏幕显示错误) */
-        #debug-console {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100px;
-            background: rgba(0,0,0,0.5); color: #0f0; font-size: 10px;
-            pointer-events: none; z-index: 1000; overflow-y: scroll;
-            padding: 5px; box-sizing: border-box; display: none; /* 默认隐藏，出错显示 */
-        }
-
-        /* 启动按钮 - 强制置顶 */
-        #start-container {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; justify-content: center; align-items: center;
-            z-index: 999; background: rgba(0,0,0,0.8);
-        }
-        #start-btn {
-            padding: 20px 40px; background: #FF0055; color: white;
-            border: 2px solid #fff; font-size: 18px; border-radius: 50px;
-            box-shadow: 0 0 30px #FF0055; font-weight: bold;
-            cursor: pointer;
-        }
-
-        /* UI Layer */
-        #ui-layer {
-            position: absolute; bottom: 30px; width: 100%;
-            display: flex; justify-content: center; gap: 15px;
-            z-index: 100; pointer-events: none;
-        }
-        .btn {
-            width: 60px; height: 60px; border-radius: 50%;
-            background: rgba(0,0,0,0.6); border: 2px solid rgba(255,255,255,0.5);
-            color: #fff; display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
-            font-size: 10px; pointer-events: auto; /* 关键：允许点击 */
-            backdrop-filter: blur(5px);
-        }
-        .active { border-color: #00F2FF; color: #00F2FF; box-shadow: 0 0 15px #00F2FF; }
-
-        #crosshair {
-            position: absolute; top: 50%; left: 50%;
-            width: 20px; height: 20px;
-            border: 2px solid rgba(255, 255, 255, 0.8); border-radius: 50%;
-            transform: translate(-50%, -50%);
-            pointer-events: none; z-index: 50;
-        }
+        body { background: #333; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; text-align: center; }
+        video { width: 80%; max-width: 400px; background: black; margin-top: 20px; border: 2px solid #fff; }
+        button { padding: 15px 30px; font-size: 18px; background: #00d2ff; border: none; border-radius: 8px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
-    <div id="debug-console">系统日志:<br></div>
+    <h3>摄像头体检工具</h3>
+    <button id="btn" onclick="testCamera()">点击测试摄像头</button>
+    <div id="log">等待操作...</div>
+    <video id="vid" playsinline autoplay></video>
 
-    <video id="cam-video" autoplay playsinline muted></video>
-    <div id="crosshair"></div>
-
-    <div id="start-container">
-        <button id="start-btn">启动 AR 模式</button>
-    </div>
-
-    <div id="ui-layer" style="display:none;">
-        <div class="btn active" id="btn-gold">流金<br>GOLD</div>
-        <div class="btn" id="btn-neon">赛博<br>NEON</div>
-        <div class="btn" id="btn-ink">狂草<br>INK</div>
-        <div class="btn" id="btn-clear" style="color:#FF0055; border-color:#FF0055;">清空<br>CLR</div>
-    </div>
-
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
+    <script>
+        function log(text) {
+            document.getElementById('log').innerText = text;
+            console.log(text);
         }
-    </script>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
-
-        // --- 日志工具 (把错误显示在屏幕上) ---
-        const debugDiv = document.getElementById('debug-console');
-        function log(msg, isError = false) {
-            console.log(msg);
-            debugDiv.style.display = 'block';
-            debugDiv.innerHTML += `<span style="color:${isError?'red':'#0f0'}">>> ${msg}</span><br>`;
-            debugDiv.scrollTop = debugDiv.scrollHeight;
-        }
-        window.onerror = function(msg, source, lineno) {
-            log(`Error: ${msg} (Line ${lineno})`, true);
-        };
-
-        // --- 核心变量 ---
-        let camera, scene, renderer, controls;
-        let isDrawing = false;
-        let brushType = 'gold';
-        const strokes = [];
-        let graffitiWall;
-
-        // --- 1. 绑定按钮事件 (修复点击无效的关键) ---
-        const startBtn = document.getElementById('start-btn');
-        const startContainer = document.getElementById('start-container');
-        const uiLayer = document.getElementById('ui-layer');
-
-        startBtn.addEventListener('click', async () => {
-            log("按钮被点击，正在初始化...");
-            startBtn.disabled = true;
-            startBtn.innerText = "请求权限中...";
-
+        async function testCamera() {
+            log("1. 按钮已点击，正在检查环境...");
+            
             // 检查 HTTPS
             if (!window.isSecureContext) {
-                log("严重错误: 当前不是 HTTPS 环境，无法调用摄像头！请使用 localhost 或 https。", true);
-                alert("错误：必须使用 HTTPS 或 localhost 才能打开摄像头。");
+                log("❌ 失败：当前不是 HTTPS 环境！");
+                alert("错误：请使用 https:// 访问");
                 return;
             }
 
-            try {
-                await initCamera();
-                await initSensors();
-                
-                // 成功后隐藏启动页，显示 UI
-                startContainer.style.display = 'none';
-                uiLayer.style.display = 'flex';
-                init3D();
-                log("初始化完成，可以涂鸦了！");
-            } catch (err) {
-                log("初始化失败: " + err.message, true);
-                startBtn.disabled = false;
-                startBtn.innerText = "重试";
+            // 检查 API 是否存在
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                log("❌ 失败：浏览器不支持 getUserMedia API");
+                alert("你的浏览器太旧或不支持摄像头调用");
+                return;
             }
-        });
 
-        // --- 2. 摄像头逻辑 ---
-        async function initCamera() {
-            log("正在请求摄像头...");
-            const video = document.getElementById('cam-video');
+            log("2. 环境正常，正在请求权限...");
+
             try {
+                // 尝试获取后置摄像头
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment' } 
+                    video: { 
+                        facingMode: 'environment' 
+                    } 
                 });
-                video.srcObject = stream;
-                return video.play();
-            } catch (err) {
-                throw new Error("摄像头权限被拒绝或设备不支持: " + err.name);
-            }
-        }
-
-        // --- 3. 陀螺仪逻辑 ---
-        async function initSensors() {
-            log("正在请求陀螺仪...");
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                const permission = await DeviceOrientationEvent.requestPermission();
-                if (permission !== 'granted') throw new Error("陀螺仪权限被拒绝");
-            }
-        }
-
-        // --- 4. 3D 场景逻辑 ---
-        function init3D() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
-            
-            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setClearColor(0x000000, 0); 
-            document.body.appendChild(renderer.domElement);
-
-            controls = new DeviceOrientationControls(camera);
-
-            const ambient = new THREE.AmbientLight(0xffffff, 1);
-            scene.add(ambient);
-            const dirLight = new THREE.DirectionalLight(0xffffff, 3);
-            dirLight.position.set(0, 10, 5);
-            scene.add(dirLight);
-
-            // 隐形墙
-            const geometry = new THREE.CylinderGeometry(3, 3, 10, 32, 1, true);
-            geometry.scale(-1, 1, 1);
-            const material = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
-            graffitiWall = new THREE.Mesh(geometry, material);
-            scene.add(graffitiWall);
-
-            animate();
-        }
-
-        // --- 涂鸦交互 ---
-        // 使用 addEventListener 替代 HTML onclick
-        document.getElementById('btn-gold').addEventListener('click', (e) => setBrush('gold', e.currentTarget));
-        document.getElementById('btn-neon').addEventListener('click', (e) => setBrush('neon', e.currentTarget));
-        document.getElementById('btn-ink').addEventListener('click', (e) => setBrush('ink', e.currentTarget));
-        document.getElementById('btn-clear').addEventListener('click', clearAll);
-
-        window.addEventListener('touchstart', (e) => { 
-            // 只有点在画布上才算（避开UI按钮）
-            if(e.target.tagName !== 'DIV' || !e.target.classList.contains('btn')) {
-                isDrawing = true; 
-            }
-        }, {passive: false});
-        
-        window.addEventListener('touchend', () => isDrawing = false);
-
-        function setBrush(type, el) {
-            brushType = type;
-            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
-            el.classList.add('active');
-        }
-
-        function clearAll() {
-            strokes.forEach(s => scene.remove(s.mesh));
-            strokes.length = 0;
-        }
-
-        function createStroke() {
-            const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const intersects = raycaster.intersectObject(graffitiWall);
-
-            if (intersects.length > 0) {
-                const point = intersects[0].point;
-                let size = 0.05, color = 0xffd700, emissive = 0x000000;
-
-                if (brushType === 'gold') { size = 0.08; color = 0xffd700; emissive = 0xaa4400; }
-                else if (brushType === 'neon') { size = 0.05; color = 0x00f2ff; emissive = 0x00f2ff; }
-                else { size = 0.15; color = 0x111111; }
-
-                const mat = new THREE.MeshStandardMaterial({
-                    color: color, emissive: emissive,
-                    emissiveIntensity: brushType === 'neon' ? 2 : 0.2,
-                    roughness: brushType === 'gold' ? 0.2 : 0.9,
-                    metalness: brushType === 'gold' ? 1.0 : 0.1
-                });
-                const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(size, 0), mat);
-                mesh.position.copy(point);
-                mesh.lookAt(0, point.y, 0);
-                scene.add(mesh);
                 
-                strokes.push({ mesh, isDripping: Math.random()<0.1, life: 100, velocity: 0 });
-            }
-        }
+                log("✅ 成功！已获取视频流");
+                const video = document.getElementById('vid');
+                video.srcObject = stream;
+                video.play();
+                
+                document.getElementById('btn').style.display = 'none'; // 隐藏按钮
 
-        function animate() {
-            requestAnimationFrame(animate);
-            if (controls) controls.update();
-            if (isDrawing) createStroke();
-            
-            strokes.forEach(s => {
-                if (s.isDripping && s.life > 0) {
-                    s.velocity += 0.001; s.mesh.position.y -= s.velocity;
-                    s.mesh.scale.multiplyScalar(0.98); s.life--;
-                }
-            });
-            renderer.render(scene, camera);
+            } catch (err) {
+                log("❌ 报错：" + err.name + " - " + err.message);
+                alert("摄像头启动失败：\n" + err.name + "\n请检查浏览器权限设置！");
+            }
         }
     </script>
 </body>
